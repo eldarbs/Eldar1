@@ -281,6 +281,12 @@
             const [isGenerating, setIsGenerating] = useState(false);
             const [selectedChatSugya, setSelectedChatSugya] = useState(SUGYOT[0].id);
 
+            // Invoice Extractor states
+            const [invoiceFile, setInvoiceFile] = useState(null);
+            const [pdfPreviewUrl, setPdfPreviewUrl] = useState('');
+            const [isExtracting, setIsExtracting] = useState(false);
+            const [extractedData, setExtractedData] = useState(null);
+
             // Custom Notification Toast
             const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
 
@@ -466,6 +472,110 @@ Rules for your behavior:
                 }
             };
 
+            const handleInvoiceUpload = (e) => {
+                const file = e.target.files[0];
+                if (file && file.type === 'application/pdf') {
+                    setInvoiceFile(file);
+                    setPdfPreviewUrl(URL.createObjectURL(file));
+                    setExtractedData(null);
+                    triggerToast('קובץ PDF נטען בהצלחה! 📄', 'success');
+                } else {
+                    triggerToast('אנא בחר קובץ PDF תקין.', 'error');
+                }
+            };
+
+            const handleExtractInvoice = async () => {
+                if (!invoiceFile || !apiKey || isExtracting) return;
+                setIsExtracting(true);
+                setExtractedData(null);
+                playSound('click');
+
+                try {
+                    const reader = new FileReader();
+                    const filePromise = new Promise((resolve, reject) => {
+                        reader.onload = () => resolve(reader.result.split(',')[1]);
+                        reader.onerror = (err) => reject(err);
+                    });
+                    reader.readAsDataURL(invoiceFile);
+                    const base64Data = await filePromise;
+
+                    const systemPrompt = `You are a document entity extraction specialist. Given a document (PDF), your task is to extract the text value of the entities and return them strictly as a valid JSON object matching this schema:
+{
+  "amount_paid_since_last_invoice": "string",
+  "carrier": "string",
+  "currency": "string",
+  "currency_exchange_rate": "string",
+  "delivery_date": "string",
+  "due_date": "string",
+  "freight_amount": "string",
+  "invoice_date": "string",
+  "invoice_id": "string",
+  "line_items": [
+    {
+      "amount": "string",
+      "description": "string",
+      "product_code": "string",
+      "purchase_order": "string",
+      "quantity": "string",
+      "unit": "string",
+      "unit_price": "string"
+    }
+  ]
+}`;
+
+                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            contents: [
+                                {
+                                    parts: [
+                                        {
+                                            inlineData: {
+                                                mimeType: 'application/pdf',
+                                                data: base64Data
+                                            }
+                                        },
+                                        {
+                                            text: 'Extract the entities from this invoice PDF and return ONLY a valid JSON object. Do not include markdown code block formatting (like ```json) in your response, just the raw JSON.'
+                                        }
+                                    ]
+                                }
+                            ],
+                            systemInstruction: {
+                                parts: [{ text: systemPrompt }]
+                            },
+                            generationConfig: {
+                                responseMimeType: 'application/json',
+                                temperature: 0.1
+                            }
+                        })
+                    });
+
+                    if (!response.ok) {
+                        const errData = await response.json();
+                        throw new Error(errData.error?.message || 'שגיאה בחיבור ל-Gemini');
+                    }
+
+                    const data = await response.json();
+                    const responseText = data.candidates[0].content.parts[0].text;
+                    
+                    const cleanJson = responseText.replace(/```json|```/g, '').trim();
+                    const parsedJson = JSON.parse(cleanJson);
+                    
+                    setExtractedData(parsedJson);
+                    triggerToast('הנתונים חולצו בהצלחה! 📊', 'success');
+                } catch (err) {
+                    console.error(err);
+                    setExtractedData({ error: err.message });
+                    triggerToast('חלה שגיאה בחילוץ', 'error');
+                } finally {
+                    setIsExtracting(false);
+                }
+            };
+
             return (
                 <div className="min-h-screen flex flex-col justify-between">
                     {/* Header */}
@@ -520,6 +630,7 @@ Rules for your behavior:
                                 { id: 'sugyot', label: 'סוגיות אינהרנטיות', icon: 'fa-book-open' },
                                 { id: 'battle', label: 'סימולטור קרב מוחות', icon: 'fa-brain' },
                                 { id: 'chavruta', label: 'שותף לימוד AI 🤖', icon: 'fa-comments' },
+                                { id: 'invoice', label: 'מחלץ חשבוניות AI 📄', icon: 'fa-file-invoice-dollar' },
                                 { id: 'dictionary', label: 'מילון סלנג ארמי', icon: 'fa-spell-check' },
                                 { id: 'quiz', label: 'חידון האלופים', icon: 'fa-ranking-star' }
                             ].map((tab) => (
@@ -1177,6 +1288,266 @@ Rules for your behavior:
                                                     <i className="fa-solid fa-paper-plane-rtl"></i>
                                                 </button>
                                             </form>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {activeTab === 'invoice' && (
+                            <div className="space-y-8 animate-fadeIn max-w-6xl mx-auto">
+                                <div className="text-center max-w-xl mx-auto space-y-2">
+                                    <h2 className="text-3xl font-black text-white flex items-center justify-center gap-2">מחלץ ישויות מחשבוניות AI 📄✨</h2>
+                                    <p className="text-gray-400 text-sm">העלה קובץ PDF של חשבונית, וחלץ ממנו את כל הישויות והנתונים המובנים בלייב באמצעות Gemini!</p>
+                                </div>
+
+                                {!apiKey ? (
+                                    <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8 space-y-6 max-w-md mx-auto shadow-2xl">
+                                        <div className="text-center space-y-2">
+                                            <div className="bg-amber-500/10 text-amber-400 w-16 h-16 rounded-2xl flex items-center justify-center text-3xl mx-auto">
+                                                <i className="fa-solid fa-key"></i>
+                                            </div>
+                                            <h3 className="text-xl font-bold text-white">חיבור ל-Gemini API</h3>
+                                            <p className="text-gray-400 text-xs leading-relaxed">
+                                                האפליקציה פועלת ישירות מהדפדפן שלך. כדי להפעיל את הלימוד האינטראקטיבי וחילוץ המסמכים, עליך להזין מפתח API של Gemini (הוא נשמר רק על המחשב שלך באופן מקומי).
+                                            </p>
+                                        </div>
+
+                                        <form onSubmit={handleSaveApiKey} className="space-y-4">
+                                            <div className="space-y-2">
+                                                <label className="text-xs font-bold text-gray-300 block">מפתח API של Gemini:</label>
+                                                <input
+                                                    type="password"
+                                                    placeholder="הכנס מפתח APIzaSy..."
+                                                    value={apiKeyInput}
+                                                    onChange={(e) => setApiKeyInput(e.target.value)}
+                                                    className="w-full bg-slate-950 border border-slate-800 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:border-amber-500 transition-all placeholder-gray-600"
+                                                />
+                                            </div>
+                                            <button
+                                                type="submit"
+                                                className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-black py-3 rounded-xl transition-all text-sm shadow-lg shadow-amber-500/20"
+                                            >
+                                                שמור והפעל ממשק
+                                            </button>
+                                        </form>
+
+                                        <div className="text-center pt-2 border-t border-slate-800">
+                                            <a
+                                                href="https://aistudio.google.com/"
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="text-xs text-amber-400 hover:text-amber-300 underline font-bold flex items-center justify-center gap-1"
+                                            >
+                                                <span>קבל מפתח API בחינם מ-Google AI Studio</span>
+                                                <i className="fa-solid fa-up-right-from-square text-[10px]"></i>
+                                            </a>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                        {/* Left Column: Upload & PDF Preview */}
+                                        <div className="space-y-6">
+                                            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
+                                                <h3 className="text-lg font-bold text-white border-b border-slate-850 pb-2">טעינת חשבונית</h3>
+                                                
+                                                <div className="border-2 border-dashed border-slate-800 hover:border-amber-500/50 rounded-2xl p-8 text-center transition-all cursor-pointer relative bg-slate-950/20">
+                                                    <input
+                                                        type="file"
+                                                        accept="application/pdf"
+                                                        onChange={handleInvoiceUpload}
+                                                        className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                                                    />
+                                                    <div className="space-y-3">
+                                                        <div className="bg-amber-500/10 text-amber-400 w-12 h-12 rounded-xl flex items-center justify-center text-2xl mx-auto">
+                                                            <i className="fa-solid fa-cloud-arrow-up"></i>
+                                                        </div>
+                                                        <div>
+                                                            <span className="text-sm font-bold text-white block">גרור קובץ PDF או לחץ לבחירה</span>
+                                                            <span className="text-xs text-gray-500 block mt-1">אנא העלה קובץ בפורמט PDF בלבד</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {invoiceFile && (
+                                                    <div className="flex items-center justify-between bg-slate-950/60 p-4 rounded-xl border border-slate-800">
+                                                        <div className="flex items-center gap-3 overflow-hidden">
+                                                            <i className="fa-solid fa-file-pdf text-rose-500 text-2xl shrink-0"></i>
+                                                            <div className="overflow-hidden">
+                                                                <span className="text-sm font-bold text-gray-200 block truncate">{invoiceFile.name}</span>
+                                                                <span className="text-xs text-gray-500 block">{(invoiceFile.size / 1024).toFixed(1)} KB</span>
+                                                            </div>
+                                                        </div>
+                                                        <button
+                                                            onClick={handleExtractInvoice}
+                                                            disabled={isExtracting}
+                                                            className={`px-5 py-2.5 rounded-xl font-black text-xs transition-all flex items-center gap-1.5 ${
+                                                                isExtracting
+                                                                    ? 'bg-slate-800 text-gray-500 cursor-not-allowed'
+                                                                    : 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-md shadow-amber-500/10'
+                                                            }`}
+                                                        >
+                                                            {isExtracting ? (
+                                                                <>
+                                                                    <div className="w-3.5 h-3.5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></div>
+                                                                    <span>מחלץ...</span>
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    <i className="fa-solid fa-wand-magic-sparkles"></i>
+                                                                    <span>חלץ נתונים ⚡</span>
+                                                                </>
+                                                            )}
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {pdfPreviewUrl && (
+                                                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 shadow-xl h-[450px] flex flex-col">
+                                                    <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3 border-b border-slate-850 pb-2 flex items-center gap-1.5">
+                                                        <i className="fa-solid fa-eye text-amber-500"></i>
+                                                        <span>תצוגה מקדימה של החשבונית</span>
+                                                    </h4>
+                                                    <iframe
+                                                        src={pdfPreviewUrl}
+                                                        className="w-full flex-grow rounded-xl border border-slate-850 bg-slate-950"
+                                                        title="PDF Preview"
+                                                    ></iframe>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Right Column: Extracted Entities Dashboard */}
+                                        <div className="space-y-6">
+                                            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl min-h-[300px] flex flex-col justify-between">
+                                                <div className="space-y-6">
+                                                    <h3 className="text-lg font-bold text-white border-b border-slate-850 pb-2">נתוני ישויות שחולצו</h3>
+
+                                                    {isExtracting && (
+                                                        <div className="text-center py-16 space-y-4">
+                                                            <div className="w-12 h-12 border-4 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+                                                            <div className="space-y-1">
+                                                                <h4 className="text-sm font-bold text-white">מפענח את החשבונית...</h4>
+                                                                <p className="text-xs text-gray-500">Gemini 3.5 Flash מנתח את קובץ ה-PDF ומחלץ ישויות מובנות</p>
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {!isExtracting && !extractedData && (
+                                                        <div className="text-center py-16 text-gray-500 space-y-3">
+                                                            <div className="text-4xl">📊</div>
+                                                            <p className="text-sm">אנא העלה חשבונית ולחץ על "חלץ נתונים" כדי להציג את התוצאות</p>
+                                                        </div>
+                                                    )}
+
+                                                    {!isExtracting && extractedData && extractedData.error && (
+                                                        <div className="bg-rose-950/20 border border-rose-500/30 p-4 rounded-2xl text-rose-300 text-sm flex gap-3">
+                                                            <i className="fa-solid fa-triangle-exclamation text-rose-400 text-lg shrink-0 mt-0.5"></i>
+                                                            <div>
+                                                                <span className="font-bold block mb-0.5">שגיאה בפענוח:</span>
+                                                                <span>{extractedData.error}</span>
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {!isExtracting && extractedData && !extractedData.error && (
+                                                        <div className="space-y-6 animate-fadeIn">
+                                                            {/* Summary Metadata Cards */}
+                                                            <div className="grid grid-cols-2 gap-4">
+                                                                <div className="bg-slate-950/50 p-4 rounded-xl border border-slate-800">
+                                                                    <span className="text-[10px] text-gray-500 font-bold block uppercase">מזהה חשבונית (Invoice ID)</span>
+                                                                    <span className="text-lg font-black text-amber-400 mt-1 block">{extractedData.invoice_id || 'N/A'}</span>
+                                                                </div>
+                                                                <div className="bg-slate-950/50 p-4 rounded-xl border border-slate-800">
+                                                                    <span className="text-[10px] text-gray-500 font-bold block uppercase">ספק / מוביל (Carrier)</span>
+                                                                    <span className="text-lg font-black text-blue-400 mt-1 block">{extractedData.carrier || 'N/A'}</span>
+                                                                </div>
+                                                                <div className="bg-slate-950/50 p-4 rounded-xl border border-slate-800">
+                                                                    <span className="text-[10px] text-gray-500 font-bold block uppercase">תאריך חשבונית (Invoice Date)</span>
+                                                                    <span className="text-sm font-bold text-gray-200 mt-1 block">{extractedData.invoice_date || 'N/A'}</span>
+                                                                </div>
+                                                                <div className="bg-slate-950/50 p-4 rounded-xl border border-slate-800">
+                                                                    <span className="text-[10px] text-gray-500 font-bold block uppercase">תאריך פירעון (Due Date)</span>
+                                                                    <span className="text-sm font-bold text-gray-200 mt-1 block">{extractedData.due_date || 'N/A'}</span>
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Financial Info block */}
+                                                            <div className="bg-slate-950/30 border border-slate-850 p-5 rounded-2xl space-y-3">
+                                                                <div className="flex justify-between items-center text-sm">
+                                                                    <span className="text-gray-400">סכום ששולם:</span>
+                                                                    <span className="font-black text-xl text-emerald-400">
+                                                                        {extractedData.amount_paid_since_last_invoice || '0.00'} {extractedData.currency}
+                                                                    </span>
+                                                                </div>
+                                                                <div className="flex justify-between items-center text-xs text-gray-500 border-t border-slate-850 pt-2">
+                                                                    <span>עלויות שילוח (Freight):</span>
+                                                                    <span>{extractedData.freight_amount || '0.00'} {extractedData.currency}</span>
+                                                                </div>
+                                                                {extractedData.currency_exchange_rate && (
+                                                                    <div className="flex justify-between items-center text-[10px] text-gray-600">
+                                                                        <span>שער חליפין (Exchange Rate):</span>
+                                                                        <span>{extractedData.currency_exchange_rate}</span>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+
+                                                            {/* Line Items Table */}
+                                                            {extractedData.line_items && extractedData.line_items.length > 0 && (
+                                                                <div className="space-y-3">
+                                                                    <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1.5">
+                                                                        <i className="fa-solid fa-list-ul text-amber-500"></i>
+                                                                        <span>פריטים מפורטים (Line Items)</span>
+                                                                    </h4>
+                                                                    <div className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-950/20">
+                                                                        <table className="w-full text-right text-xs">
+                                                                            <thead className="bg-slate-950 text-gray-400 uppercase font-bold border-b border-slate-850">
+                                                                                <tr>
+                                                                                    <th className="px-4 py-3">תיאור</th>
+                                                                                    <th className="px-3 py-3">מק"ט</th>
+                                                                                    <th className="px-2 py-3 text-center">כמות</th>
+                                                                                    <th className="px-3 py-3 text-left">מחיר יחידה</th>
+                                                                                    <th className="px-4 py-3 text-left">סה"כ</th>
+                                                                                </tr>
+                                                                            </thead>
+                                                                            <tbody className="divide-y divide-slate-850 text-gray-300">
+                                                                                {extractedData.line_items.map((item, index) => (
+                                                                                    <tr key={index} className="hover:bg-slate-900/40">
+                                                                                        <td className="px-4 py-3 font-semibold">{item.description || 'N/A'}</td>
+                                                                                        <td className="px-3 py-3 text-gray-500 font-mono">{item.product_code || 'N/A'}</td>
+                                                                                        <td className="px-2 py-3 text-center font-bold">{item.quantity || '0'} {item.unit || ''}</td>
+                                                                                        <td className="px-3 py-3 text-left font-mono">{item.unit_price || '0.00'}</td>
+                                                                                        <td className="px-4 py-3 text-left font-mono text-amber-400 font-bold">{item.amount || '0.00'}</td>
+                                                                                    </tr>
+                                                                                ))}
+                                                                            </tbody>
+                                                                        </table>
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            {/* Collapsible raw JSON block */}
+                                            {!isExtracting && extractedData && !extractedData.error && (
+                                                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-lg">
+                                                    <details className="group cursor-pointer">
+                                                        <summary className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center justify-between outline-none select-none">
+                                                            <span className="flex items-center gap-1.5">
+                                                                <i className="fa-solid fa-code text-blue-500"></i>
+                                                                <span>צפייה ב-JSON הגולמי</span>
+                                                            </span>
+                                                            <i className="fa-solid fa-chevron-down text-[10px] group-open:rotate-180 transition-transform"></i>
+                                                        </summary>
+                                                        <pre className="mt-4 p-4 rounded-xl bg-slate-950 border border-slate-850 text-[10px] font-mono text-emerald-400 overflow-x-auto select-all leading-normal">
+                                                            {JSON.stringify(extractedData, null, 2)}
+                                                        </pre>
+                                                    </details>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 )}
