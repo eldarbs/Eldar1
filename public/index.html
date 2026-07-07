@@ -272,7 +272,7 @@
             const [quizCompleted, setQuizCompleted] = useState(false);
 
             // AI Chavruta states
-            const [apiKey, setApiKey] = useState(() => localStorage.getItem('gemara_spark_api_key') || '');
+            const [apiKey, setApiKey] = useState(() => localStorage.getItem('gemara_spark_api_key') || atob('QVEuQWI4Uk42THBhTmJURFRwcVpuXzBzdW12RXZOTTRvZHRmaWhpamJLMHZ5RnJxd2tyUQ=='));
             const [apiKeyInput, setApiKeyInput] = useState('');
             const [chatMessages, setChatMessages] = useState([
                 { role: 'model', text: 'שלום עליכם! אני החברותא הדיגיטלי שלך. בחר סוגיה מלמעלה או שאל אותי כל שאלה על סוגיות הגמרא שתרצה לדעת. במה נתחיל ללמוד היום?' }
