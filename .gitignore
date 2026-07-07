@@ -1,0 +1,7 @@
+# Exclude private configuration files
+public/js/config.js
+
+# Firebase cache and logs
+.firebase/
+firebase-debug.log
+.firebaserc
