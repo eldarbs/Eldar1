@@ -399,7 +399,7 @@
 
             const handleClearApiKey = () => {
                 localStorage.removeItem('gemara_spark_api_key');
-                setApiKey('');
+                setApiKey(window.GEMARA_SPARK_CONFIG?.apiKey || '');
                 setApiKeyInput('');
                 triggerToast('מפתח ה-API הוסר.', 'success');
             };
