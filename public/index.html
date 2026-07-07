@@ -68,6 +68,7 @@
 </head>
 <body class="bg-[#0b0f19]">
 
+    <script src="js/config.js"></script>
     <div id="root"></div>
 
     <script type="text/babel">
@@ -272,7 +273,7 @@
             const [quizCompleted, setQuizCompleted] = useState(false);
 
             // AI Chavruta states
-            const [apiKey, setApiKey] = useState(() => localStorage.getItem('gemara_spark_api_key') || atob('QVEuQWI4Uk42THBhTmJURFRwcVpuXzBzdW12RXZOTTRvZHRmaWhpamJLMHZ5RnJxd2tyUQ=='));
+            const [apiKey, setApiKey] = useState(() => localStorage.getItem('gemara_spark_api_key') || window.GEMARA_SPARK_CONFIG?.apiKey || '');
             const [apiKeyInput, setApiKeyInput] = useState('');
             const [chatMessages, setChatMessages] = useState([
                 { role: 'model', text: 'שלום עליכם! אני החברותא הדיגיטלי שלך. בחר סוגיה מלמעלה או שאל אותי כל שאלה על סוגיות הגמרא שתרצה לדעת. במה נתחיל ללמוד היום?' }
