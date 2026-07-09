@@ -410,8 +410,25 @@
                 playSound('click');
 
                 try {
-                    const activeSugyaObj = SUGYOT.find(s => s.id === selectedChatSugya) || SUGYOT[0];
-                    const systemPrompt = `
+                    const isFreeStudy = selectedChatSugya === 'free-study';
+                    const activeSugyaObj = !isFreeStudy ? (SUGYOT.find(s => s.id === selectedChatSugya) || SUGYOT[0]) : null;
+                    
+                    let systemPrompt = '';
+                    if (isFreeStudy) {
+                        systemPrompt = `
+You are a warm, sharp, and encouraging Talmudic study partner (chavruta) named "Chavruta AI" inside the GemaraSpark app.
+You help the user analyze and understand Talmudic debates.
+The user is in "Free Study" mode. You are ready to discuss ANY tractate, page, quote, or discussion in the entire Babylonian or Jerusalem Talmud (Shas), including commentaries like Rashi and Tosafot.
+
+Rules for your behavior:
+1. Always respond in high-quality, friendly, and accessible modern Hebrew (RTL).
+2. Act as a Socratic study partner: do not simply lecture. Ask thought-provoking questions to guide the user's understanding.
+3. Every factual claim must be backed by a Talmudic source or commentary reference (e.g., page, Rashi, or Amora name).
+4. Keep answers concise, clear, structured, and easy to read. Use bold text where appropriate.
+5. If the user asks something completely unrelated to Jewish learning, Gemara, or Bible, politely guide them back to the Beit Midrash: "שאלה מעניינת, אך בוא נתמקד בלימוד הגמרא שלנו בבית המדרש!"
+                        `.trim();
+                    } else {
+                        systemPrompt = `
 You are a warm, sharp, and encouraging Talmudic study partner (chavruta) named "Chavruta AI" inside the GemaraSpark app.
 You help the user analyze and understand Talmudic debates.
 Currently, the user is studying the tractate page/sugya: "${activeSugyaObj.title}" (${activeSugyaObj.tractate}).
@@ -424,7 +441,8 @@ Rules for your behavior:
 3. Every factual claim must be backed by a Talmudic source or commentary reference (e.g., page, Rashi, or Amora name).
 4. Keep answers concise, clear, structured, and easy to read. Use bold text where appropriate.
 5. If the user asks something completely unrelated to Jewish learning, Gemara, or Bible, politely guide them back to the Beit Midrash: "שאלה מעניינת, אך בוא נתמקד בלימוד הגמרא שלנו בבית המדרש!"
-                    `.trim();
+                        `.trim();
+                    }
 
                     // Convert messages to Gemini API format (role: user/model)
                     const contents = newMessages.map(m => ({
@@ -1083,6 +1101,21 @@ Rules for your behavior:
                                                 <div className="space-y-2">
                                                     <label className="text-xs font-extrabold text-gray-400 uppercase tracking-widest block">בחר סוגיה למיקוד ה-AI:</label>
                                                     <div className="space-y-2">
+                                                        <button
+                                                            onClick={() => { setSelectedChatSugya('free-study'); playSound('click'); }}
+                                                            className={`w-full text-right px-4 py-3 rounded-xl text-xs font-bold transition-all border ${
+                                                                selectedChatSugya === 'free-study'
+                                                                    ? 'bg-amber-500/10 border-amber-500 text-amber-400'
+                                                                    : 'bg-slate-950/40 border-slate-800/80 text-gray-400 hover:bg-slate-950/80 hover:text-white'
+                                                            }`}
+                                                        >
+                                                            <div className="font-extrabold flex items-center gap-1.5">
+                                                                <i className="fa-solid fa-graduation-cap"></i>
+                                                                <span>📚 לימוד חופשי (כל הש"ס)</span>
+                                                            </div>
+                                                            <div className="text-[10px] opacity-60 mt-0.5">שאל על כל דף, מונח או סוגיה בגמרא</div>
+                                                        </button>
+
                                                         {SUGYOT.map(sug => (
                                                             <button
                                                                 key={sug.id}
@@ -1104,7 +1137,9 @@ Rules for your behavior:
                                             <div className="space-y-2">
                                                 <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800 text-[10px] text-gray-400 leading-relaxed">
                                                     <span className="font-bold text-white block mb-1">מצב מחובר:</span>
-                                                    החברותא מכיר כעת את דפי הגמרא שבחרת. שאל אותו שאלות כמו "למה אביי טוען ככה?" או "מה ההבדל בין ייאוש מדעת לשלא מדעת?".
+                                                    {selectedChatSugya === 'free-study' 
+                                                        ? 'החברותא במצב "לימוד חופשי" ויכול לענות על כל מסכת, דף או סוגיה בש"ס! שאל אותו על כל נושא שתרצה.' 
+                                                        : 'החברותא מכיר כעת את דפי הגמרא שבחרת. שאל אותו שאלות כמו "למה אביי טוען ככה?" או "מה ההבדל בין ייאוש מדעת לשלא מדעת?".'}
                                                 </div>
                                                 <button
                                                     onClick={handleClearApiKey}
